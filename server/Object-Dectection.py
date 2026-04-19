@@ -4,11 +4,11 @@ System.out.println("Detected color: " + color);
 
 if (color.equalsIgnoreCase("GREEN")) {
     System.out.println("Movable object");
-    mbot.moveForward(30);
+    mbot.moveForward();
 
 } else if (color.equalsIgnoreCase("BLUE")) {
     System.out.println("Immovable object");
-    mbot.turn(45);
+    mbot.turn();
 
 } else if (color.equalsIgnoreCase("RED")) {
     System.out.println("Sample detected");
