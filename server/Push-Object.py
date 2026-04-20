@@ -1,8 +1,7 @@
-@register_command("PUSH_OBJECT")
-def handle_push_object(payload):
-    if (arbiter.acquire("motors", "PUSH_OBJECT", 100) and
-            arbiter.acquire("ultrasonic", "PUSH_OBJECT", 100) and
-            arbiter.acquire("imu", "PUSH_OBJECT", 100)):
+def push_object():
+    if (arbiter.acquire("motors", "PUSH_OBJECT", 80) and
+            arbiter.acquire("ultrasonic", "PUSH_OBJECT", 80) and
+            arbiter.acquire("imu", "PUSH_OBJECT", 80)):
         try:
             dist = mbuild.ultrasonic2.get()
             if dist <= 0 or dist > 20:
@@ -27,3 +26,8 @@ def handle_push_object(payload):
             arbiter.release("imu", "PUSH_OBJECT")
 
     return error_response("RESOURCE_BUSY", "Hardware unavailable")
+
+@register_command("PUSH_OBJECT")
+def handle_push_object(payload):
+    push_object()
+    return ok_response("PUSH_OBJECT Started")
