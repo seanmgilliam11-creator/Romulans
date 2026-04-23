@@ -1,19 +1,36 @@
-String color = mbot.getColorObjectFromCamera(false);
+import edu.desu.cis.robot.control.RobotController;
 
-System.out.println("Detected color: " + color);
+public class ColorDetectionBot extends RobotController {
 
-if (color.equalsIgnoreCase("GREEN")) {
-    System.out.println("Movable object");
-    mbot.moveForward();
+    public ColorDetectionBot(String robotName) {
+        super(robotName);
+    }
 
-} else if (color.equalsIgnoreCase("BLUE")) {
-    System.out.println("Immovable object");
-    mbot.turn();
+    @Override
+    public void run() {
+        mbot.setFlashlight(true);
 
-} else if (color.equalsIgnoreCase("RED")) {
-    System.out.println("Sample detected");
-    mbot.stop();
+        String color = mbot.getColorObjectFromCamera(false);
+        System.out.println("Detected color: " + color);
 
-} else {
-    System.out.println("Unknown object");
+        if (color.equalsIgnoreCase("GREEN")) {
+            System.out.println("Movable object detected");
+        } else if (color.equalsIgnoreCase("BLUE")) {
+            System.out.println("Immovable object detected");
+        } else if (color.equalsIgnoreCase("RED")) {
+            System.out.println("Sample detected");
+        } else if (color.equalsIgnoreCase("YELLOW")) {
+            System.out.println("Insertion point detected");
+        } else {
+            System.out.println("Unknown object");
+        }
+
+        mbot.setFlashlight(false);
+    }
+
+    public static void main(String[] args) {
+        try (ColorDetectionBot robot = new ColorDetectionBot(“Snell”)) {
+            robot.run();
+        }
+    }
 }
