@@ -1,36 +1,35 @@
-import edu.desu.cis.robot.control.RobotController;
+ @register_command("CLASSIFY_OBJECT")
+def handle_classify_object(payload):
+    if arbiter.acquire("camera", "CLASSIFY_OBJECT", 50):
+        try:
+            block = detect_color(True)
+            color = block["color"]
 
-public class ColorDetectionBot extends RobotController {
+            if color == "GREEN":
+                object_type = "movable"
+            elif color == "BLUE":
+                object_type = "immovable"
+            elif color == "RED":
+                object_type = "sample"
+            elif color == "YELLOW":
+                object_type = "insertion point"
+            else:
+                object_type = "unknown"
 
-    public ColorDetectionBot(String robotName) {
-        super(robotName);
-    }
+            return ok_response("Object classified", {
+                "color": color,
+                "object_type": object_type
+            })
 
-    @Override
-    public void run() {
-        mbot.setFlashlight(true);
+        finally:
+            arbiter.release("camera", "CLASSIFY_OBJECT")
 
-        String color = mbot.getColorObjectFromCamera(false);
-        System.out.println("Detected color: " + color);
+    return error_response("RESOURCE_BUSY", "Camera is busy")
 
-        if (color.equalsIgnoreCase("GREEN")) {
-            System.out.println("Movable object detected");
-        } else if (color.equalsIgnoreCase("BLUE")) {
-            System.out.println("Immovable object detected");
-        } else if (color.equalsIgnoreCase("RED")) {
-            System.out.println("Sample detected");
-        } else if (color.equalsIgnoreCase("YELLOW")) {
-            System.out.println("Insertion point detected");
-        } else {
-            System.out.println("Unknown object");
-        }
 
-        mbot.setFlashlight(false);
-    }
 
-    public static void main(String[] args) {
-        try (ColorDetectionBot robot = new ColorDetectionBot(“Snell”)) {
-            robot.run();
-        }
-    }
-}
+
+
+
+
+
