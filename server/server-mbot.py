@@ -11,7 +11,7 @@ import _thread
 # --- Configuration ---
 WIFI_SSID = "mbots"
 WIFI_PASSWORD = "pemacs-mbots"
-ROBOT_ID = "Greer"
+ROBOT_ID = "Gartei"
 DISCOVERY_PORT = 9998
 COMMAND_PORT = 9990
 TELEMETRY_PORT = 9991
@@ -935,13 +935,13 @@ def RETRIEVE_CRYSTAL():
     if distance > 20:
         return
 
-    # Step 2: Check camera (pseudo function — replace with your actual camera logic)
-    if not camera_detects_crystal():
-        return
+    color = mbuild.quad_rgb_sensor.get_color()
 
+    if color != "red":
+            return
     # Step 3: Simulate retrieving the crystal
-    mbot.stop()
-    sleep(1)
+    mbot2.drive_speed(0, 0)
+        time.sleep(1)
 
     # Step 4: Confirm acquisition
 

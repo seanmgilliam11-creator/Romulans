@@ -30,7 +30,7 @@ public class CrystalBot extends RobotController {
     }
 
     public static void main(String[] args) {
-        try (CrystalBot robot = new CrystalBot("StingBot")) {
+        try (CrystalBot robot = new CrystalBot("Gartei")) {
             robot.run();
         }
     }
