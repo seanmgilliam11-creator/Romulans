@@ -927,3 +927,30 @@ def handle_steer_around(payload):
     scheduler.start_behavior("STEER_AROUND", steer_around_behavior,
                              threshold, speed, diff)
     return ok_response("STEER_AROUND started")
+
+def RETRIEVE_CRYSTAL():
+    distance = mbot.get_distance()
+
+    # Step 1: Make sure something is actually there
+    if distance > 20:
+        return
+
+    # Step 2: Check camera (pseudo function — replace with your actual camera logic)
+    if not camera_detects_crystal():
+        return
+
+    # Step 3: Simulate retrieving the crystal
+    mbot.stop()
+    sleep(1)
+
+    # Step 4: Confirm acquisition
+
+    # Spin (360 degrees)
+    mbot.turn(360)
+
+    # Play a tune
+    mbot.play_tone(440, 0.5)
+    mbot.play_tone(660, 0.5)
+
+    # Print message
+    print("Sample Found")

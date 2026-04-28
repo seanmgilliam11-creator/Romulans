@@ -11,7 +11,7 @@ public class PushBot extends RobotController {
         mbot.avoidCrashing(15);
         while(true){
             SensorSnapshot sensor = awaitNewData();
-            if (sensor.distanc() <= 15){
+            if (sensor.distance() <= 15){
                 mbot.stopBehavior("AVOID_CRASHING");
                 mbot.pushObject();
                 mbot.avoidCrashing(15);
