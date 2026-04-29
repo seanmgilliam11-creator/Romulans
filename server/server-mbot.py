@@ -931,8 +931,12 @@ def handle_steer_around(payload):
 @register_command("RETRIEVE_CRYSTAL")
 def handle_retrieve_crystal(payload):
 
-    if (arbiter.acquire("motors", "RETRIEVE_CRYSTAL", 100) and
-        arbiter.acquire("ultrasonic", "RETRIEVE_CRYSTAL", 100)):
+    params = payload.get("parameters", {})
+
+    if (arbiter.acquire("motors", "RETRIEVE_CRYSTAL", 50) and
+        arbiter.acquire("ultrasonic", "RETRIEVE_CRYSTAL", 50) and
+        arbiter.acquire("quad_rgb_sensor", "RETRIEVE_CRYSTAL", 50)):
+
         try:
             distance = mbuild.ultrasonic2.get()
 
@@ -941,14 +945,13 @@ def handle_retrieve_crystal(payload):
 
             color = mbuild.quad_rgb_sensor.get_color()
 
-            if color.lower() != "red":
+            if not color or color.lower() != "red":
                 return ok_response("Not a crystal")
 
             mbot2.drive_speed(0, 0)
             time.sleep(1)
 
-
-            turn(360)
+            mbot2.turn(360)
 
             mbot2.play_tone(440, 0.5)
             mbot2.play_tone(660, 0.5)
@@ -960,5 +963,6 @@ def handle_retrieve_crystal(payload):
         finally:
             arbiter.release("motors", "RETRIEVE_CRYSTAL")
             arbiter.release("ultrasonic", "RETRIEVE_CRYSTAL")
+            arbiter.release("quad_rgb_sensor", "RETRIEVE_CRYSTAL")
 
     return error_response("RESOURCE_BUSY", "Hardware unavailable")

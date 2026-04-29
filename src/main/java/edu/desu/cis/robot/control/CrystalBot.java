@@ -12,20 +12,18 @@ public class CrystalBot extends RobotController {
     public void run() {
         mbot.avoidCrashing(15);
 
+        boolean crystalRetrieved = false;
+
         while (true) {
             SensorSnapshot sensor = awaitNewData();
 
-            if (sensor.distance() <= 15) { // <-- changed here
-                mbot.stopBehavior("AVOID_CRASHING");
-                // Try to retrieve crystal
+            if (!crystalRetrieved && sensor.distance() <= 15) {
+                mbot.stopAllBehaviors();
+
                 mbot.retrieveCrystal();
-                // Resume moving
-                mbot.avoidCrashing(15);
+
+                crystalRetrieved = true;
             }
-            // Prevent tight infinite loop crash
-            try {
-                Thread.sleep(50);
-            } catch (InterruptedException e) {}
         }
     }
 
