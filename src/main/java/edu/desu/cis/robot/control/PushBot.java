@@ -6,20 +6,22 @@ public class PushBot extends RobotController {
     public PushBot(String robotName) {
         super(robotName);
     }
+
     @Override
     public void run() {
         mbot.avoidCrashing(15);
-        while(true){
+        while (true) {
             SensorSnapshot sensor = awaitNewData();
-            if (sensor.distance() <= 15){
+            if (sensor.distance() <= 15) {
                 mbot.stopBehavior("AVOID_CRASHING");
                 mbot.pushObject();
                 mbot.avoidCrashing(15);
             }
         }
-        public static void main(String[] args) {
+        public static void main (String[]args){
             try (ObstacleAvoider robot = new ObstacleAvoider("StingBot")) {
                 robot.run();
             }
         }
     }
+}
