@@ -25,3 +25,4 @@ def handle_classify_object(payload):
             arbiter.release("camera", "CLASSIFY_OBJECT")
 
     return error_response("RESOURCE_BUSY", "Camera is busy")
+
