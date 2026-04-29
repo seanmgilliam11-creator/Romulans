@@ -1,6 +1,4 @@
-
-
- @register_command("CLASSIFY_OBJECT")
+@register_command("CLASSIFY_OBJECT")
 def handle_classify_object(payload):
     if arbiter.acquire("camera", "CLASSIFY_OBJECT", 50):
         try:
