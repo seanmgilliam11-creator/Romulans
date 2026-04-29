@@ -546,5 +546,10 @@ public class MBot2 {
     public void pushObject() {
         execute("PUSH_OBJECT", null);
     }
-
+    /**
+     * Commands the robot to retrieve a crystal.
+     */
+    public void retrieveCrystal() {
+        execute("RETRIEVE_CRYSTAL", null);
+    }
 }
