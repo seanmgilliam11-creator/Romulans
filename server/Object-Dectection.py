@@ -26,6 +26,17 @@ def handle_classify_object(payload):
 
     return error_response("RESOURCE_BUSY", "Camera is busy")
 
+@event.is_press("middle")
+def test_color_joystick():
+    block = detect_color(True)
+    color = block["color"]
+
+    cyberpi.console.print("Detected color: " + color)
+    cyberpi.display.show_label(color, 16, "center")
+    time.sleep(2)
+    cyberpi.display.clear()
+
+
 
 
 
