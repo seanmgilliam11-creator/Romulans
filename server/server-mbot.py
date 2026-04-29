@@ -927,3 +927,38 @@ def handle_steer_around(payload):
     scheduler.start_behavior("STEER_AROUND", steer_around_behavior,
                              threshold, speed, diff)
     return ok_response("STEER_AROUND started")
+
+@register_command("RETRIEVE_CRYSTAL")
+def handle_retrieve_crystal(payload):
+
+    if (arbiter.acquire("motors", "RETRIEVE_CRYSTAL", 100) and
+        arbiter.acquire("ultrasonic", "RETRIEVE_CRYSTAL", 100)):
+        try:
+            distance = mbuild.ultrasonic2.get()
+
+            if distance > 20 or distance <= 0:
+                return ok_response("No object nearby")
+
+            color = mbuild.quad_rgb_sensor.get_color()
+
+            if color.lower() != "red":
+                return ok_response("Not a crystal")
+
+            mbot2.drive_speed(0, 0)
+            time.sleep(1)
+
+
+            turn(360)
+
+            mbot2.play_tone(440, 0.5)
+            mbot2.play_tone(660, 0.5)
+
+            print("Sample Found")
+
+            return ok_response("Crystal retrieved")
+
+        finally:
+            arbiter.release("motors", "RETRIEVE_CRYSTAL")
+            arbiter.release("ultrasonic", "RETRIEVE_CRYSTAL")
+
+    return error_response("RESOURCE_BUSY", "Hardware unavailable")
