@@ -862,3 +862,223 @@ def stop_at_line_behavior():
 def handle_stop_at_line(payload):
     scheduler.start_behavior("STOP_AT_LINE", stop_at_line_behavior)
     return ok_response("STOP_AT_LINE behavior started")
+
+def steer_around_behavior(threshold, speed, diff):
+    """
+    Called repeatedly by the scheduler.
+    Reads the ultrasonic sensor and either drives straight or arcs left.
+    """
+    # Read the distance — skip this cycle if the sensor is busy
+    if not arbiter.acquire("ultrasonic", "STEER_AROUND", 200, blocking=False):
+        return
+    try:
+        distance = mbuild.ultrasonic2.get()
+    finally:
+        arbiter.release("ultrasonic", "STEER_AROUND")
+
+    # Acquire the motors — skip this cycle if something higher-priority holds them
+    if not arbiter.acquire("motors", "STEER_AROUND", 200, blocking=False):
+        return
+
+    try:
+        if distance > threshold:
+            # Path is clear — drive straight
+            time.sleep(0.4)
+            mbot2.drive_speed(speed, -speed)
+        else:
+            # Obstacle detected — arc left
+            move_and_turn(speed=speed, diff=diff, is_left=True)
+    finally:
+        arbiter.release("motors", "STEER_AROUND")
+
+
+@register_command("STEER_AROUND")
+def handle_steer_around(payload):
+    params    = payload.get("parameters", {})
+    threshold = float(params.get("threshold", 25))
+    speed     = float(params.get("speed",     40))
+    diff      = float(params.get("diff",      20))
+
+    if speed < 0 or speed > 100:
+        return error_response("INVALID_PARAM",
+                              "speed must be between 0 and 100")
+    if diff < 0 or diff >= speed:
+        return error_response("INVALID_PARAM",
+                              "diff must be >= 0 and less than speed")
+
+    scheduler.start_behavior("STEER_AROUND", steer_around_behavior,
+                             threshold, speed, diff)
+    return ok_response("STEER_AROUND started")
+
+def push_object():
+    if (arbiter.acquire("motors", "PUSH_OBJECT", 80) and
+            arbiter.acquire("ultrasonic", "PUSH_OBJECT", 80) and
+            arbiter.acquire("imu", "PUSH_OBJECT", 80)):
+        try:
+            dist = mbuild.ultrasonic2.get()
+            if dist <= 0 or dist > 20:
+                return ok_response("No object close enough to push")
+
+            turn(180) #turns around
+            mbot2.straight(-(dist * 1.3)) #drives backwards into object
+            move_and_turn(speed=-40, diff=20, is_left=True) #move/turn object out of the way for 4 secnods
+            time.sleep(4)
+            mbot2.straight(0)
+            move_and_turn(speed=40, diff=20, is_left=True) #drive back
+            time.sleep(3.5)
+            mbot2.drive_speed(0, 0)
+            mbot2.straight(dist * 1.3)
+            #mbot2.straight(-15)
+            turn(180)  #turns back to original position
+
+            return ok_response("Object cleared")
+        finally:
+            arbiter.release("motors", "PUSH_OBJECT")
+            arbiter.release("ultrasonic", "PUSH_OBJECT")
+            arbiter.release("imu", "PUSH_OBJECT")
+
+    return error_response("RESOURCE_BUSY", "Hardware unavailable")
+
+@register_command("PUSH_OBJECT")
+def handle_push_object(payload):
+    push_object()
+    return ok_response("PUSH_OBJECT Started")
+
+
+@register_command("CLASSIFY_OBJECT")
+def handle_classify_object(payload):
+    if arbiter.acquire("camera", "CLASSIFY_OBJECT", 50):
+        try:
+            block = detect_color(True)
+            color = block["color"]
+
+            if color == "GREEN":
+                object_type = "movable"
+            elif color == "BLUE":
+                object_type = "immovable"
+            elif color == "RED":
+                object_type = "sample"
+            elif color == "YELLOW":
+                object_type = "insertion point"
+            else:
+                object_type = "unknown"
+
+            return ok_response("Object classified", {
+                "color": color,
+                "object_type": object_type
+            })
+
+        finally:
+            arbiter.release("camera", "CLASSIFY_OBJECT")
+
+    return error_response("RESOURCE_BUSY", "Camera is busy")
+
+@register_command("CHECK_IMMOVABLE_OBJECT")
+def handle_check_immovable_object(payload):
+    if arbiter.acquire("camera", "CHECK_IMMOVABLE_OBJECT", 50):
+        try:
+            block = detect_color(True)
+            color = block["color"]
+
+            if color == "BLUE":
+                return ok_response("Immovable object detected", {
+                    "color": color,
+                    "is_immovable": True
+                })
+            else:
+                return ok_response("Object is not immovable", {
+                    "color": color,
+                    "is_immovable": False
+                })
+
+        finally:
+            arbiter.release("camera", "CHECK_IMMOVABLE_OBJECT")
+
+    return error_response("RESOURCE_BUSY", "Camera is busy")
+
+@register_command("CHECK_MOVABLE_OBJECT")
+def handle_check_movable_object(payload):
+    if arbiter.acquire("camera", "CHECK_MOVABLE_OBJECT", 50):
+        try:
+            block = detect_color(True)
+            color = block["color"]
+
+            if color == "GREEN":
+                return ok_response("Movable object detected", {
+                    "color": color,
+                    "is_movable": True
+                })
+            else:
+                return ok_response("Object is not movable", {
+                    "color": color,
+                    "is_movable": False
+                })
+
+        finally:
+            arbiter.release("camera", "CHECK_MOVABLE_OBJECT")
+
+    return error_response("RESOURCE_BUSY", "Camera is busy")
+
+def follow_line_behavior():
+    if not arbiter.acquire("line", "FOLLOW_LINE", 10, blocking=False):
+        return
+    try:
+        line = mbuild.quad_rgb_sensor.get_line_sta() # line 1
+    finally:
+        arbiter.release("line", "FOLLOW_LINE")
+
+    if not arbiter.acquire("motors", "FOLLOW_LINE", 10, blocking=False):
+        return
+    try:
+        # implement line 2 – 13
+        kp = 0.4
+        base_speed = 30
+        error = 0
+
+        if line == 0:
+            error = 45
+        elif line == 1:
+            error = 0
+        elif 1 < line < 4:
+            error = -30
+        elif line < 7:
+            error = -35
+        else:
+            error = -70
+
+        correction = error * kp
+        em1_speed = base_speed + correction
+        em1_speed = min(max(em1_speed, -50), 50)
+        em2_speed = -base_speed + correction
+        em2_speed = min(max(em2_speed, -50), 50)
+        mbot2.drive_speed(em1_speed, em2_speed)
+
+    finally:
+        arbiter.release("motors", "FOLLOW_LINE")
+
+@register_command("FOLLOW_LINE")
+def handle_follow_line(payload):
+    scheduler.start_behavior("FOLLOW_LINE", follow_line_behavior)
+    return ok_response("Following Line")
+
+@register_command("RETRIEVE_CRYSTAL")
+def handle_retrieve_crystal(payload):
+    if not arbiter.acquire("motors", "RETRIEVE_CRYSTAL", 150):
+        return error_response("RESOURCE_BUSY", "Motors are currently busy")
+
+    try:
+        try:
+            cyberpi.led.show("red orange yellow green blue")
+            cyberpi.audio.play("magic")
+            time.sleep(1)
+            cyberpi.led.off("all")
+            turn(180)
+            turn(180)
+        except:
+            pass
+
+        cyberpi.console.print("Sample Found!")
+        return ok_response("Crystal retrieved")
+
+    finally:
+        arbiter.release("motors", "RETRIEVE_CRYSTAL")
