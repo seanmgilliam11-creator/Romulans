@@ -11,7 +11,7 @@ import _thread
 # --- Configuration ---
 WIFI_SSID = "mbots"
 WIFI_PASSWORD = "pemacs-mbots"
-ROBOT_ID = "Greer"
+ROBOT_ID = "Snell"
 DISCOVERY_PORT = 9998
 COMMAND_PORT = 9990
 TELEMETRY_PORT = 9991
@@ -19,6 +19,7 @@ BUFFER_SIZE = 1024
 
 # Color sign mapping (trained beforehand)
 COLOR_NAMES = {
+
     1: "RED",
     2: "GREEN",
     3: "BLUE",
@@ -322,7 +323,7 @@ def get_detected_ball():
     for sign_id in COLOR_NAMES:
         w = mbuild.smart_camera.get_sign_wide(sign_id)
         h = mbuild.smart_camera.get_sign_hight(sign_id)
-        if w > 0 and h > 0:
+        if w > 5 and h > 5:
             balls.append({
                 "id": sign_id,
                 "color": COLOR_NAMES[sign_id],
@@ -366,7 +367,9 @@ def camera_learn(mode):
                         "Detecting " + COLOR_NAMES[sign_id] + " Object", 16, 'center')
                     ball = get_detected_ball()
                     if COLOR_NAMES[sign_id] != ball["color"]:
-                        raise AssertionError("Object color not detected")
+                        cyberpi.display.show_label("Try again", 16, "center")
+                        cyberpi.console.print("Expected " + COLOR_NAMES[sign_id] + " but saw " + ball["color"])
+                        time.sleep(3)
                 cyberpi.display.clear()
                 cyberpi.display.show_label("Colors Learned!", 16, 'center')
                 time.sleep(pause)
@@ -748,337 +751,246 @@ def handle_stop_all_behaviors(payload):
     return ok_response("All Behaviors Stopped")
 
 
-# ============================================================
-# CyberPi Button Events
-# ============================================================
 
-@event.is_press('a')
-def on_button_a_pressed():
-    cyberpi.console.print("A pressed — shutting down servers")
-    telemetry.stop()
-    scheduler.stop_all()
-    server.shutdown()
+# Our code
 
 
-@event.is_press('b')
+SPEED = 35
+TURN_SPEED = 30
+OBJECT_DISTANCE = 8
+
+has_sample = False
+mission_running = False
+
+last_object_time = 0
+OBJECT_COOLDOWN = 2.0
+
+
+def stop_robot():
+    mbot2.drive_speed(0, 0)
+
+
+def flash_led(r, g, b, times):
+    for i in range(times):
+        cyberpi.led.on(r, g, b, id="all")
+        time.sleep(0.2)
+        cyberpi.led.off(id="all")
+        time.sleep(0.2)
+
+
+def follow_line():
+    line = mbuild.quad_rgb_sensor.get_line_sta()
+
+    kp = 0.4
+    base_speed = 22
+    error = 0
+
+    if line == 0:
+        error = 45
+    elif line == 1:
+        error = 0
+    elif 1 < line < 4:
+        error = -30
+    elif line < 7:
+        error = -35
+    else:
+        error = -45
+
+    correction = error * kp
+
+    em1_speed = base_speed + correction
+    em1_speed = min(max(em1_speed, -50), 50)
+
+    em2_speed = -base_speed + correction
+    em2_speed = min(max(em2_speed, -50), 50)
+
+    mbot2.drive_speed(em1_speed, em2_speed)
+
+    mission_running = False
+    last_object_time = 0
+    OBJECT_COOLDOWN = 2.0
+
+def avoid_blue():
+    stop_robot()
+    flash_led(0, 0, 255, 2)
+    time.sleep(0.2)
+
+    # Back it up
+    mbot2.drive_speed(-SPEED, SPEED)
+    time.sleep(0.5)
+
+    # Turn right
+    mbot2.drive_speed(TURN_SPEED, TURN_SPEED)
+    time.sleep(0.6)
+
+    # Move around the object
+    mbot2.drive_speed(SPEED, -SPEED)
+    time.sleep(0.8)
+
+    stop_robot()
+
+
+def push_green():
+    stop_robot()
+    flash_led(0, 255, 0, 2)
+    time.sleep(0.2)
+
+    # Push the GREEN movable object
+    mbot2.drive_speed(SPEED, -SPEED)
+    time.sleep(1.2)
+
+    stop_robot()
+
+
+def collect_red():
+    global has_sample
+    has_sample = True
+
+    stop_robot()
+    flash_led(255, 0, 0, 4)
+
+    try:
+        cyberpi.audio.play("yeah")
+    except:
+        pass
+
+    cyberpi.display.show_label("Sample Found", 16, "center")
+    time.sleep(1)
+    cyberpi.display.clear()
+
+
+def finish_yellow():
+    global mission_running
+
+    stop_robot()
+    flash_led(255, 255, 0, 5)
+
+    try:
+        cyberpi.audio.play("level-up")
+    except:
+        pass
+
+    cyberpi.display.show_label("Mission Done", 16, "center")
+    mission_running = False
+
+
+def check_object():
+    global has_sample
+    global last_object_time
+
+    # "cooldown" so it doesn't keep bumping and interacting with the same object over and over again
+    if time.time() - last_object_time < OBJECT_COOLDOWN:
+        return
+
+    distance = mbuild.ultrasonic2.get()
+
+    if distance < OBJECT_DISTANCE:
+        stop_robot()
+        time.sleep(0.4)
+
+        block = detect_color(True)
+        color = block["color"]
+        if color == "None":
+            time.sleep(0.2)
+            block = detect_color(True)
+            color = block["color"]
+
+        # ignore yellow cube unless we have the red "crystal/sample" detected
+        if color == "YELLOW" and not has_sample:
+            color = "None"
+
+        cyberpi.console.print("Mission detected: " + color + "\n")
+        cyberpi.display.show_label(color, 16, "center")
+        time.sleep(0.7)
+        cyberpi.display.clear()
+
+        if color == "BLUE":
+            avoid_blue()
+            last_object_time = time.time()
+
+        elif color == "GREEN":
+            push_green()
+            last_object_time = time.time()
+
+        elif color == "RED":
+            collect_red()
+            last_object_time = time.time()
+
+            # move forward so it doesn’t keep hitting it again
+            mbot2.drive_speed(SPEED, -SPEED)
+            time.sleep(0.6)
+            stop_robot()
+
+        elif color == "YELLOW" and has_sample:
+            finish_yellow()
+            last_object_time = time.time()
+
+        else:
+            # if it's not one of the cubes just go around it and move on
+            mbot2.drive_speed(TURN_SPEED, TURN_SPEED)
+            time.sleep(0.3)
+            stop_robot()
+            last_object_time = time.time()
+
+
+def final_maze_loop():
+    global mission_running
+
+    while mission_running:
+        check_object()
+
+        if mission_running:
+            follow_line()
+
+        time.sleep(0.05)
+
+    stop_robot()
+
+
+
+# Buttons!!!
+
+
+@event.is_press("a")
+def start_mission():
+    global mission_running
+    global has_sample
+
+    has_sample = False
+    mission_running = True
+
+    cyberpi.display.show_label("Mission Start", 16, "center")
+    time.sleep(1)
+    cyberpi.display.clear()
+
+    final_maze_loop()
+
+
+@event.is_press("b")
 def learn_colors():
     camera_learn("COLOR")
 
 
-# ============================================================
-# Startup
-# ============================================================
+
+# Startup wifi (so we don't have to stare at connecting wifi for forever)
+
 
 cyberpi.wifi.connect(WIFI_SSID, WIFI_PASSWORD)
-cyberpi.display.show_label("connecting to wifi...", 12, "center")
+cyberpi.display.show_label("connecting to wifi", 12, "center")
+
 while not cyberpi.wifi.is_connect():
     time.sleep(0.1)
+
 cyberpi.display.clear()
-cyberpi.console.print("Starting mBot2 server...")
-cyberpi.console.print("Robot ID: " + ROBOT_ID)
+cyberpi.display.show_label("Press A Start", 16, "center")
+cyberpi.console.print("Robot ready: " + ROBOT_ID + "\n")
 
-server.start()
+@event.is_press("middle")
+def test_color_joystick():
+    block = detect_color(True)
+    color = block["color"]
 
-
-# ################################################################
-# EXTENSION ZONE — Add custom commands below this line
-# ################################################################
-#
-# Use the @register_command decorator to add new commands.
-# Each handler receives a `payload` dict and must return either
-# ok_response(...) or error_response(...).
-#
-# Template:
-#
-#   @register_command("MY_COMMAND")
-#   def handle_my_command(payload):
-#       params = payload.get("parameters", {})
-#       # your logic here
-#       return ok_response("Done", {"key": "value"})
-#
-# For behaviors (looping background tasks), define a behavior
-# function and start it with the scheduler:
-#
-#   def my_behavior():
-#       # called repeatedly until stopped
-#       pass
-#
-#   @register_command("MY_BEHAVIOR")
-#   def handle_start_my_behavior(payload):
-#       scheduler.start_behavior("MY_BEHAVIOR", my_behavior)
-#       return ok_response("My behavior started")
-#
-# ################################################################
-
-# ============================================================
-# Behavior Functions
-# ============================================================
-
-def avoid_crashing_behavior(threshold):
-    if not arbiter.acquire("ultrasonic", "AVOID_CRASH", 250, blocking=False):
-        return
-    try:
-        distance = mbuild.ultrasonic2.get()
-    finally:
-        arbiter.release("ultrasonic", "AVOID_CRASH")
-
-    if distance > threshold:
-        return
-
-    if not arbiter.acquire("motors", "AVOID_CRASH", 250, blocking=False):
-        return
-    try:
-        mbot2.drive_speed(0, 0)
-    finally:
-        arbiter.release("motors", "AVOID_CRASH")
-
-@register_command("AVOID_CRASHING")
-def handle_avoid_crashing(payload):
-    params = payload.get("parameters", {})
-    threshold = params.get("threshold", 15)
-    scheduler.start_behavior("AVOID_CRASHING", avoid_crashing_behavior,
-                             threshold)
-    return ok_response("Avoiding crashes")
-
-
-def stop_at_line_behavior():
-    if not arbiter.acquire("line", "STOP_AT_LINE", 150, blocking=False):
-        return
-    try:
-        status = mbuild.quad_rgb_sensor.get_line_sta()
-    finally:
-        arbiter.release("line", "STOP_AT_LINE")
-
-    if not arbiter.acquire("motors", "STOP_AT_LINE", 180, blocking=False):
-        return
-    try:
-        if status > 0:
-            mbot2.drive_speed(0,0)
-    finally:
-        arbiter.release("motors", "STOP_AT_LINE")
-
-
-@register_command("STOP_AT_LINE")
-def handle_stop_at_line(payload):
-    scheduler.start_behavior("STOP_AT_LINE", stop_at_line_behavior)
-    return ok_response("STOP_AT_LINE behavior started")
-
-def steer_around_behavior(threshold, speed, diff):
-    """
-    Called repeatedly by the scheduler.
-    Reads the ultrasonic sensor and either drives straight or arcs left.
-    """
-    # Read the distance — skip this cycle if the sensor is busy
-    if not arbiter.acquire("ultrasonic", "STEER_AROUND", 200, blocking=False):
-        return
-    try:
-        distance = mbuild.ultrasonic2.get()
-    finally:
-        arbiter.release("ultrasonic", "STEER_AROUND")
-
-    # Acquire the motors — skip this cycle if something higher-priority holds them
-    if not arbiter.acquire("motors", "STEER_AROUND", 200, blocking=False):
-        return
-
-    try:
-        if distance > threshold:
-            # Path is clear — drive straight
-            time.sleep(0.4)
-            mbot2.drive_speed(speed, -speed)
-        else:
-            # Obstacle detected — arc left
-            move_and_turn(speed=speed, diff=diff, is_left=True)
-    finally:
-        arbiter.release("motors", "STEER_AROUND")
-
-
-@register_command("STEER_AROUND")
-def handle_steer_around(payload):
-    params    = payload.get("parameters", {})
-    threshold = float(params.get("threshold", 25))
-    speed     = float(params.get("speed",     40))
-    diff      = float(params.get("diff",      20))
-
-    if speed < 0 or speed > 100:
-        return error_response("INVALID_PARAM",
-                              "speed must be between 0 and 100")
-    if diff < 0 or diff >= speed:
-        return error_response("INVALID_PARAM",
-                              "diff must be >= 0 and less than speed")
-
-    scheduler.start_behavior("STEER_AROUND", steer_around_behavior,
-                             threshold, speed, diff)
-    return ok_response("STEER_AROUND started")
-
-def push_object():
-    if (arbiter.acquire("motors", "PUSH_OBJECT", 80) and
-            arbiter.acquire("ultrasonic", "PUSH_OBJECT", 80) and
-            arbiter.acquire("imu", "PUSH_OBJECT", 80)):
-        try:
-            dist = mbuild.ultrasonic2.get()
-            if dist <= 0 or dist > 20:
-                return ok_response("No object close enough to push")
-
-            turn(180) #turns around
-            mbot2.straight(-(dist * 1.3)) #drives backwards into object
-            move_and_turn(speed=-40, diff=20, is_left=True) #move/turn object out of the way for 4 secnods
-            time.sleep(4)
-            mbot2.straight(0)
-            move_and_turn(speed=40, diff=20, is_left=True) #drive back
-            time.sleep(3.5)
-            mbot2.drive_speed(0, 0)
-            mbot2.straight(dist * 1.3)
-            #mbot2.straight(-15)
-            turn(180)  #turns back to original position
-
-            return ok_response("Object cleared")
-        finally:
-            arbiter.release("motors", "PUSH_OBJECT")
-            arbiter.release("ultrasonic", "PUSH_OBJECT")
-            arbiter.release("imu", "PUSH_OBJECT")
-
-    return error_response("RESOURCE_BUSY", "Hardware unavailable")
-
-@register_command("PUSH_OBJECT")
-def handle_push_object(payload):
-    push_object()
-    return ok_response("PUSH_OBJECT Started")
-
-
-@register_command("CLASSIFY_OBJECT")
-def handle_classify_object(payload):
-    if arbiter.acquire("camera", "CLASSIFY_OBJECT", 50):
-        try:
-            block = detect_color(True)
-            color = block["color"]
-
-            if color == "GREEN":
-                object_type = "movable"
-            elif color == "BLUE":
-                object_type = "immovable"
-            elif color == "RED":
-                object_type = "sample"
-            elif color == "YELLOW":
-                object_type = "insertion point"
-            else:
-                object_type = "unknown"
-
-            return ok_response("Object classified", {
-                "color": color,
-                "object_type": object_type
-            })
-
-        finally:
-            arbiter.release("camera", "CLASSIFY_OBJECT")
-
-    return error_response("RESOURCE_BUSY", "Camera is busy")
-
-@register_command("CHECK_IMMOVABLE_OBJECT")
-def handle_check_immovable_object(payload):
-    if arbiter.acquire("camera", "CHECK_IMMOVABLE_OBJECT", 50):
-        try:
-            block = detect_color(True)
-            color = block["color"]
-
-            if color == "BLUE":
-                return ok_response("Immovable object detected", {
-                    "color": color,
-                    "is_immovable": True
-                })
-            else:
-                return ok_response("Object is not immovable", {
-                    "color": color,
-                    "is_immovable": False
-                })
-
-        finally:
-            arbiter.release("camera", "CHECK_IMMOVABLE_OBJECT")
-
-    return error_response("RESOURCE_BUSY", "Camera is busy")
-
-@register_command("CHECK_MOVABLE_OBJECT")
-def handle_check_movable_object(payload):
-    if arbiter.acquire("camera", "CHECK_MOVABLE_OBJECT", 50):
-        try:
-            block = detect_color(True)
-            color = block["color"]
-
-            if color == "GREEN":
-                return ok_response("Movable object detected", {
-                    "color": color,
-                    "is_movable": True
-                })
-            else:
-                return ok_response("Object is not movable", {
-                    "color": color,
-                    "is_movable": False
-                })
-
-        finally:
-            arbiter.release("camera", "CHECK_MOVABLE_OBJECT")
-
-    return error_response("RESOURCE_BUSY", "Camera is busy")
-
-def follow_line_behavior():
-    if not arbiter.acquire("line", "FOLLOW_LINE", 10, blocking=False):
-        return
-    try:
-        line = mbuild.quad_rgb_sensor.get_line_sta() # line 1
-    finally:
-        arbiter.release("line", "FOLLOW_LINE")
-
-    if not arbiter.acquire("motors", "FOLLOW_LINE", 10, blocking=False):
-        return
-    try:
-        # implement line 2 – 13
-        kp = 0.4
-        base_speed = 30
-        error = 0
-
-        if line == 0:
-            error = 45
-        elif line == 1:
-            error = 0
-        elif 1 < line < 4:
-            error = -30
-        elif line < 7:
-            error = -35
-        else:
-            error = -70
-
-        correction = error * kp
-        em1_speed = base_speed + correction
-        em1_speed = min(max(em1_speed, -50), 50)
-        em2_speed = -base_speed + correction
-        em2_speed = min(max(em2_speed, -50), 50)
-        mbot2.drive_speed(em1_speed, em2_speed)
-
-    finally:
-        arbiter.release("motors", "FOLLOW_LINE")
-
-@register_command("FOLLOW_LINE")
-def handle_follow_line(payload):
-    scheduler.start_behavior("FOLLOW_LINE", follow_line_behavior)
-    return ok_response("Following Line")
-
-@register_command("RETRIEVE_CRYSTAL")
-def handle_retrieve_crystal(payload):
-    if not arbiter.acquire("motors", "RETRIEVE_CRYSTAL", 150):
-        return error_response("RESOURCE_BUSY", "Motors are currently busy")
-
-    try:
-        try:
-            cyberpi.led.show("red orange yellow green blue")
-            cyberpi.audio.play("magic")
-            time.sleep(1)
-            cyberpi.led.off("all")
-            turn(180)
-            turn(180)
-        except:
-            pass
-
-        cyberpi.console.print("Sample Found!")
-        return ok_response("Crystal retrieved")
-
-    finally:
-        arbiter.release("motors", "RETRIEVE_CRYSTAL")
+    cyberpi.console.print("Detected color: " + color)
+    cyberpi.display.show_label(color, 16, "center")
+    time.sleep(2)
+    cyberpi.display.clear()
